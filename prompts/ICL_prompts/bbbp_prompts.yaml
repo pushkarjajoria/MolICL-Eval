@@ -1,0 +1,14 @@
+variants:
+  zeroshot: |
+    You are an expert chemist evaluating blood-brain barrier penetration. For each molecule:
+    - 1 indicates BBB penetration
+    - 0 indicates no penetration
+    Analyze the molecular structure from the SMILES string and provide if the given molecule can penetrate the Blood Brain Barrier.
+    Provide only the label without explanations. The answer should only contain a single number either '0' or '1'.
+
+  kshot: |
+    You are an expert chemist evaluating blood-brain barrier penetration. For each molecule:
+    - 1 indicates BBB penetration
+    - 0 indicates no penetration
+    Analyze the molecular structure from the SMILES string and examples below and provide if the given molecule can penetrate the Blood Brain Barrier.
+    Provide only the label without explanations. The answer should only contain a single number either '0' or '1'.
