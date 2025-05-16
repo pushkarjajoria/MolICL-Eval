@@ -1,7 +1,8 @@
 import heapq
 import json
 from typing import Optional
-
+import os
+import pandas as pd
 import numpy as np
 import yaml
 from pandas import DataFrame
@@ -69,7 +70,7 @@ def find_closest(
     return [item[1] for item in sorted(heap, reverse=True)]
 
 
-def generate_prompts(train_df, test_df, prompt_file, model_name, k, zeroshot=False, equal=True):
+def generate_prompts(train_df, test_df, prompt_file, k, zeroshot=False, equal=True):
     def _generate_prompt(smile, examples=None):
         if zeroshot and examples is not None:
             raise ValueError("examples cannot be used with zeroshot")
@@ -77,22 +78,15 @@ def generate_prompts(train_df, test_df, prompt_file, model_name, k, zeroshot=Fal
             raise ValueError("examples cannot be none with kshot")
 
         if zeroshot:
-            return system_prompt + "\n" + base_prompt + "\n" + f"Smiles: {smile}\n" + "BBBP: "
+            return base_prompt + "\n" + f"SMILES: {smile}\n" + "BBB Penetration: "
         else:
             example_string = ""
             for ex_smile, ex_label in examples:
-                example_string += "\n" + f"Example Smiles: {ex_smile}\n" + f"BBBP: {int(ex_label)}"
-        return system_prompt + "\n" + base_prompt + example_string + "\n" + f"Question Smiles: {smile}\n" + "BBBP: "
+                example_string += "\n" + f"Example SMILES: {ex_smile}\n" + f"BBB Penetration: {int(ex_label)}"
+        return base_prompt + example_string + "\n" + f"Input SMILES: {smile}\n" + "BBB Penetration: "
 
     if k > 0 and zeroshot:
         raise ValueError("Either zeroshot or k > 0")
-
-    with open(SYSTEM_PROMPTS_FILE) as f:
-        system_prompts = json.load(f)
-    if model_name not in system_prompts:
-        print(f"[NOTE] Unable to find the system prompt inside the system prompts config file for model: {model_name}")
-        print("Using empty system prompt")
-    system_prompt = system_prompts.get(model_name)
     # Load prompt variants from YAML
     with open(prompt_file, 'r') as f:
         prompt_variants = yaml.safe_load(f)
@@ -116,12 +110,7 @@ def generate_prompts(train_df, test_df, prompt_file, model_name, k, zeroshot=Fal
 
 
 if __name__ == '__main__':
-    import os
-    import pandas as pd
-    from tqdm import tqdm
-
     # ── Experiment arguments ────────────────────────────────────────────
-    MODEL_NAME   = "Llama-3-13B-Instruct"
     PROMPT_FILE  = "prompts/ICL_prompts/bbbp_prompts.yaml"
     OUTPUT_DIR   = "datasets/InContextPrompts"
     KS           = [4, 6, 8]
@@ -139,9 +128,8 @@ if __name__ == '__main__':
     print(f"[INFO] Output directory: {OUTPUT_DIR}")
 
     # build the list of experiments
-    experiments = []
+    experiments = [ZERO_SHOT]
     # zero-shot
-    experiments.append(ZERO_SHOT)
     # k-shot experiments
     for k in KS:
         for eq in EQUAL_OPTS:
@@ -160,14 +148,13 @@ if __name__ == '__main__':
             train_df,
             test_df,
             prompt_file=PROMPT_FILE,
-            model_name=MODEL_NAME,
             k=k,
             zeroshot=zs_flag,
             equal=equal
         )
 
         # build output path per experiment
-        out_file = os.path.join(OUTPUT_DIR, f"bbbp_llama3_{name}.csv")
+        out_file = os.path.join(OUTPUT_DIR, f"bbbp_{name}.csv")
         print(f"[SAVE] Writing prompts+labels → {out_file}")
         pd.DataFrame({"prompt": prompts, "label": labels}) \
           .to_csv(out_file, index=False)

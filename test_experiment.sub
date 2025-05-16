@@ -1,0 +1,29 @@
+# HTCondor submit description file: test_experiment.submit
+
+universe            = docker
+docker_image        = pushkarjajoria/lm-eval:latest
+getenv              = HOME
+transfer_executable = False
+initialdir          = /nethome/pjajoria
+executable          = /nethome/pjajoria/Github/MolICL-Eval/run_hpc.sh
+
+# Standard log paths
+output              = /nethome/pjajoria/Github/MolICL-Eval/logfiles/test.$(Cluster).out
+error               = /nethome/pjajoria/Github/MolICL-Eval/logfiles/test.$(Cluster).err
+log                 = /nethome/pjajoria/Github/MolICL-Eval/logfiles/test.$(Cluster).log
+
+# Resources
+request_CPUs        = 1
+request_memory      = 20G
+request_GPUs        = 1
+
+# Run only on your cluster
+requirements        = (Machine == "cl17lx.lsv.uni-saarland.de")
+
+# Arguments: <PRETRAINED> <TASK> <OUTDIR> [<BATCH>]
+arguments           = vicgalle/gpt2-open-instruct-v1 \
+                      bbbp_llama3_zeroshot \
+                      /data/users/pjajoria/ICL_runs/run_test \
+                      8
+
+queue 1

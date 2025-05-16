@@ -59,3 +59,7 @@ htmlcov/
 
 # Datasets folder (ignores all contents)
 datasets/
+logfiles/
+pickle_dump/
+results/
+*.sh

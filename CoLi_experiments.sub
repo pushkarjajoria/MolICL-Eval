@@ -1,0 +1,61 @@
+# HTCondor submit description file: all_experiments.submit
+
+universe            = docker
+docker_image        = pushkarjajoria/lm-eval:transformers
+docker_pull_policy  = always
+initialdir          = /nethome/pjajoria
+executable          = /nethome/pjajoria/Github/MolICL-Eval/run_hpc_CoLi.sh
+transfer_executable = True
+# transfer_input_files = /nethome/nlouis/TEST, /nethome/nlouis/FLOCK, /data/users/nlouis/input1.txt, /data/users/nlouis/input2.txt, /data/users/nlouis/input3.txt
+# only transfer your tarball
+transfer_output_files = /workspace/bbbp_gemma2-27b_zeroshot_results.tgz
+
+# send it back to your home directory
+transfer_output_remaps = "/workspace/bbbp_gemma2-27b_zeroshot_results.tgz /nethome/pjajoria/Github/MolICL_Eval/results/zero_shot_results.tgz"
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT_OR_EVICT
+
+# Comment and run interactive and check if i can access that /scratch/common_models
+
+output              = /nethome/pjajoria/Github/MolICL-Eval/logfiles/all.$(Cluster).$(Process).out
+error               = /nethome/pjajoria/Github/MolICL-Eval/logfiles/all.$(Cluster).$(Process).err
+log                 = /nethome/pjajoria/Github/MolICL-Eval/logfiles/all.$(Cluster).log
+
+request_CPUs        = 1
+request_memory      = 100G
+request_GPUs        = 1
+
+# requirements        = (Machine == "cl17lx.lsv.uni-saarland.de")
+requirements          = (GPUs_GlobalMemoryMb >= 79000) && (GPUs_Capability >= 9.0)
+
+# Shared model
+PRETRAINED          = google/gemma-2-27b-it
+BATCH               = 8
+
+# 1) zero-shot
+arguments           = $(PRETRAINED) bbbp_gemma2-27b_zeroshot /workspace/output/zero_shot $(BATCH)
+queue 1
+
+# 2) k=4, equal
+# arguments           = $(PRETRAINED) bbbp_gemma2-9b_k4_eq    /data/users/pjajoria/ICL_runs/k4_eq    $(BATCH)
+# queue 1
+
+# 3) k=4, no-eq
+# arguments           = $(PRETRAINED) bbbp_gemma2-9b_k4_noeq  /data/users/pjajoria/ICL_runs/k4_noeq  $(BATCH)
+# queue 1
+
+# 4) k=6, equal
+# arguments           = $(PRETRAINED) bbbp_gemma2-9b_k6_eq    /data/users/pjajoria/ICL_runs/k6_eq    $(BATCH)
+# queue 1
+
+# 5) k=6, no-eq
+# arguments           = $(PRETRAINED) bbbp_gemma2-9b_k6_noeq  /data/users/pjajoria/ICL_runs/k6_noeq  $(BATCH)
+# queue 1
+
+# 6) k=8, equal
+# arguments           = $(PRETRAINED) bbbp_gemma2-9b_k8_eq    /data/users/pjajoria/ICL_runs/k8_eq    $(BATCH)
+# queue 1
+
+# 7) k=8, no-eq
+# arguments           = $(PRETRAINED) bbbp_gemma2-9b_k8_noeq  /data/users/pjajoria/ICL_runs/k8_noeq  $(BATCH)
+# queue 1
