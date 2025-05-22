@@ -1,7 +1,7 @@
 # HTCondor submit description file: all_experiments.submit
 
 universe            = docker
-docker_image        = pushkarjajoria/lm-eval:transformers
+docker_image        = pushkarjajoria/lsv_17lx_cuda_base:latest
 docker_pull_policy  = always
 initialdir          = /nethome/pjajoria
 executable          = /nethome/pjajoria/Github/MolICL-Eval/run_distance.sh
@@ -15,10 +15,18 @@ request_CPUs        = 1
 request_memory      = 100G
 request_GPUs        = 1
 
-requirements        = (Machine == "cl17lx.lsv.uni-saarland.de")
 
 # Shared model
-PRETRAINED          = google/gemma-2-9b-it
+LLAMA          = meta-llama/Meta-Llama-3-8B
+GEMMA1B        = google/gemma-3-1b-it
+GEMMA4B        = google/gemma-3-4b-it
 
-arguments           = $(PRETRAINED) /nethome/pjajoria/Github/MolICL-Eval/pickle_dump/distance_non_canonical
+# Llama
+requirements        = (Machine == "cl18lx.lsv.uni-saarland.de")
+arguments           = $(LLAMA)
+queue 1
+
+# GEMMA4B
+requirements        = (Machine == "cl18lx.lsv.uni-saarland.de")
+arguments           = $(GEMMA4B)
 queue 1

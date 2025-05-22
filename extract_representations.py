@@ -1,6 +1,7 @@
 import pickle
-import sys
 import torch
+from tqdm import tqdm
+
 from generate_non_canonical_dataset import get_bbbp_non_canonical_smiles
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import numpy as np
@@ -13,14 +14,14 @@ device = torch.device('cpu')
 torch.cuda.empty_cache()
 
 
-def entrypoint(res):
+def entrypoint(res, model_name):
     # First run experiment 1
     exp1_means, exp1_stderrs = experiment1(res)
-    plot_experiment1(exp1_means, exp1_stderrs)
+    plot_experiment1(exp1_means, exp1_stderrs, model_name)
 
     # Then run experiment 2
     exp2_p1_means, exp2_p1_stderrs, exp2_p2_means, exp2_p2_stderrs = experiment2(res)
-    plot_experiment2(exp2_p1_means, exp2_p1_stderrs, exp2_p2_means, exp2_p2_stderrs)
+    plot_experiment2(exp2_p1_means, exp2_p1_stderrs, exp2_p2_means, exp2_p2_stderrs, model_name)
 
 
 def experiment1(res):
@@ -74,7 +75,7 @@ def experiment2(res):
     """
     Evaluates embedding quality through synthetic retrieval tasks:
     1. For each compound (query) in the dictionary:
-        a. Create candidate pool containing:
+        a. Create candidate pool of size 5 containing:
             - 1 true non-canonical variant (positive)
             - 4 random non-canonical variants from other compounds (negatives)
     2. For each layer:
@@ -143,29 +144,47 @@ def experiment2(res):
     return p1_means, p1_stderrs, p2_means, p2_stderrs
 
 
-def plot_experiment1(means, stderrs):
+def plot_experiment1(means, stderrs, model_name):
     plt.figure(figsize=(10, 6))
     plt.errorbar(range(len(means)), means, yerr=stderrs,
                  fmt='-o', capsize=5, color='darkgreen')
     plt.xlabel("Layer Number", fontsize=12)
     plt.ylabel("Cosine Similarity", fontsize=12)
-    plt.title("Canonical vs Non-Canonical Embedding Similarity", fontsize=14)
+    plt.title(f"[{model_name}] Canonical vs Non-Canonical Embedding Similarity", fontsize=14)
     plt.grid(alpha=0.3)
     plt.show()
 
 
-def plot_experiment2(p1_means, p1_stderrs, p2_means, p2_stderrs):
+def plot_experiment2(p1_means, p1_stderrs, p2_means, p2_stderrs, model_name):
+    """
+    Visualizes information retrieval performance with shaded error regions
+
+    Parameters:
+    p1_means (list): Mean Precision@1 values per layer
+    p1_stderrs (list): Standard errors for Precision@1
+    p2_means (list): Mean Precision@2 values per layer
+    p2_stderrs (list): Standard errors for Precision@2
+    """
     plt.figure(figsize=(10, 6))
     layers = range(len(p1_means))
 
-    plt.errorbar(layers, p1_means, yerr=p1_stderrs,
-                 fmt='-o', capsize=5, label='Precision@1', color='navy')
-    plt.errorbar(layers, p2_means, yerr=p2_stderrs,
-                 fmt='-s', capsize=5, label='Precision@2', color='crimson')
+    # Plot Precision@1 with shaded error region
+    plt.plot(layers, p1_means, '-o', color='navy', label='Precision@1')
+    plt.fill_between(layers,
+                     np.array(p1_means) - np.array(p1_stderrs),
+                     np.array(p1_means) + np.array(p1_stderrs),
+                     color='navy', alpha=0.2)
+
+    # Plot Precision@2 with shaded error region
+    plt.plot(layers, p2_means, '-s', color='crimson', label='Precision@2')
+    plt.fill_between(layers,
+                     np.array(p2_means) - np.array(p2_stderrs),
+                     np.array(p2_means) + np.array(p2_stderrs),
+                     color='crimson', alpha=0.2)
 
     plt.xlabel("Layer Number", fontsize=12)
     plt.ylabel("Precision", fontsize=12)
-    plt.title("Information Retrieval Performance by Layer", fontsize=14)
+    plt.title(f"[{model_name}] Information Retrieval Performance by Layer.", fontsize=14)
     plt.legend()
     plt.grid(alpha=0.3)
     plt.show()
@@ -213,7 +232,7 @@ def get_transformer_emb(hf_model: str, hf_tokenizer: str):
     model.eval()  # Set model to evaluation mode
 
     res = {}
-    for k, v in smiles_map.items():
+    for k, v in tqdm(smiles_map.items()):
         canonical_embdeddings = extract_hidden_layers_avg_pooling([k], tokenizer, model)
         non_canonical_embeddings = extract_hidden_layers_avg_pooling(v, tokenizer, model)
         res[k] = {"smiles": k,
@@ -225,13 +244,14 @@ def get_transformer_emb(hf_model: str, hf_tokenizer: str):
 
 
 if __name__ == '__main__':
-    hf_model_name = "google/gemma-3-4b-it"
-    res = get_transformer_emb(hf_model_name, hf_model_name)
+    hf_model_name = "meta-llama/Meta-Llama-3-8B"
     filename = hf_model_name.split("/")[-1]
-    with open(f"/nethome/pjajoria/Github/MolICL-Eval/pickle_dump/distance_non_canonical/{filename}_pickle.dmp", "wb") as handle:
-        pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    # res = get_transformer_emb(hf_model_name, hf_model_name)
+    # with open(f"/nethome/pjajoria/Github/MolICL-Eval/pickle_dump/distance_non_canonical/{filename}_pickle.dmp", "wb") as handle:
+    #     pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
     print("Done")
     # Plotting the results
-    # with open(f"/nethome/pjajoria/Github/MolICL-Eval/pickle_dump/distance_non_canonical/{filename}_pickle.dmp", "rb") as handle:
-    #     res = pickle.load(handle)
-    # entrypoint(res)
+    with open(f"/nethome/pjajoria/Github/MolICL-Eval/pickle_dump/distance_non_canonical/{filename}_pickle.dmp", "rb") as handle:
+        res = pickle.load(handle)
+    entrypoint(res, filename)
