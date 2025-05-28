@@ -1,3 +1,4 @@
+import os
 import pickle
 import torch
 from tqdm import tqdm
@@ -152,7 +153,10 @@ def plot_experiment1(means, stderrs, model_name):
     plt.ylabel("Cosine Similarity", fontsize=12)
     plt.title(f"[{model_name}] Canonical vs Non-Canonical Embedding Similarity", fontsize=14)
     plt.grid(alpha=0.3)
-    plt.show()
+    plot_dir = f"/nethome/pjajoria/Github/MolICL-Eval/results/non_canonical_plots/{model_name}"
+    os.makedirs(plot_dir, exist_ok=True)
+    plt.savefig(f"{plot_dir}/{model_name}_exp1.png")
+    plt.close()
 
 
 def plot_experiment2(p1_means, p1_stderrs, p2_means, p2_stderrs, model_name):
@@ -187,7 +191,10 @@ def plot_experiment2(p1_means, p1_stderrs, p2_means, p2_stderrs, model_name):
     plt.title(f"[{model_name}] Information Retrieval Performance by Layer.", fontsize=14)
     plt.legend()
     plt.grid(alpha=0.3)
-    plt.show()
+    plot_dir = f"/nethome/pjajoria/Github/MolICL-Eval/results/non_canonical_plots/{model_name}"
+    os.makedirs(plot_dir, exist_ok=True)
+    plt.savefig(f"{plot_dir}/{model_name}_exp2.png")
+    plt.close()
 
 
 def extract_hidden_layers_avg_pooling(input_strings, tokenizer, model):
@@ -244,14 +251,15 @@ def get_transformer_emb(hf_model: str, hf_tokenizer: str):
 
 
 if __name__ == '__main__':
-    hf_model_name = "meta-llama/Meta-Llama-3-8B"
-    filename = hf_model_name.split("/")[-1]
+    hf_models = ["meta-llama/Meta-Llama-3-8B", "google/gemma-3-4b-it", "google/gemma-3-1b-it"]
+    for hf_model_name in hf_models:
+        filename = hf_model_name.split("/")[-1]
 
-    # res = get_transformer_emb(hf_model_name, hf_model_name)
-    # with open(f"/nethome/pjajoria/Github/MolICL-Eval/pickle_dump/distance_non_canonical/{filename}_pickle.dmp", "wb") as handle:
-    #     pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    print("Done")
-    # Plotting the results
-    with open(f"/nethome/pjajoria/Github/MolICL-Eval/pickle_dump/distance_non_canonical/{filename}_pickle.dmp", "rb") as handle:
-        res = pickle.load(handle)
-    entrypoint(res, filename)
+        # res = get_transformer_emb(hf_model_name, hf_model_name)
+        # with open(f"/nethome/pjajoria/Github/MolICL-Eval/pickle_dump/distance_non_canonical/{filename}_pickle.dmp", "wb") as handle:
+        #     pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        print("Done")
+        # Plotting the results
+        with open(f"/data/users/pjajoria/pickle_dumps/MolICL-Eval/distance_non_canonical/{filename}_pickle.dmp", "rb") as handle:
+            res = pickle.load(handle)
+        entrypoint(res, filename)

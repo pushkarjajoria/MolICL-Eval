@@ -31,5 +31,5 @@ def generate_random_smiles(smiles_list, n_variants=5):
 def get_bbbp_non_canonical_smiles(n_variants=5):
     train_df, test_df, val_df = bbbp()
     smiles = test_df['smiles']
-    random_smiles = generate_random_smiles(smiles) # Dict mapping each smile to non-canonical variants
+    random_smiles = generate_random_smiles(smiles, n_variants=n_variants)  # Dict mapping each smile to non-canonical variants
     return random_smiles

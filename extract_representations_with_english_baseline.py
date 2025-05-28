@@ -1,6 +1,7 @@
 import argparse
 import os
 import pickle
+import random
 from typing import Optional
 
 import torch
@@ -21,8 +22,6 @@ torch.cuda.empty_cache()
 def entrypoint(res, model_name):
     # First collect all prompt-specific results
     all_exp1 = []
-    all_exp2_p1 = []
-    all_exp2_p2 = []
 
     # Get prompts from first entry (same for all)
     prompts = next(iter(res.values()))["prompts"]
@@ -41,34 +40,20 @@ def entrypoint(res, model_name):
 
         # Run experiments for this prompt
         exp1_means, exp1_stderrs = experiment1(prompt_res)
-        exp2_p1_means, exp2_p1_stderrs, exp2_p2_means, exp2_p2_stderrs = experiment2(prompt_res)
 
         # Store for averaging
         all_exp1.append(exp1_means)
-        all_exp2_p1.append(exp2_p1_means)
-        all_exp2_p2.append(exp2_p2_means)
 
         # Plot per-prompt results
         plot_experiment1(exp1_means, exp1_stderrs, model_name,
-                         f"prompt_{prompt_idx}")
-        plot_experiment2(exp2_p1_means, exp2_p1_stderrs,
-                         exp2_p2_means, exp2_p2_stderrs, model_name,
                          f"prompt_{prompt_idx}")
 
     # Compute cross-prompt averages
     avg_exp1_means = np.mean(all_exp1, axis=0)
     avg_exp1_stderr = np.std(all_exp1, axis=0) / np.sqrt(len(prompts))
 
-    avg_exp2_p1 = np.mean(all_exp2_p1, axis=0)
-    avg_exp2_p1_err = np.std(all_exp2_p1, axis=0) / np.sqrt(len(prompts))
-
-    avg_exp2_p2 = np.mean(all_exp2_p2, axis=0)
-    avg_exp2_p2_err = np.std(all_exp2_p2, axis=0) / np.sqrt(len(prompts))
-
     # Plot averaged results
     plot_experiment1(avg_exp1_means, avg_exp1_stderr, model_name, "avg_all_prompts")
-    plot_experiment2(avg_exp2_p1, avg_exp2_p1_err,
-                     avg_exp2_p2, avg_exp2_p2_err, model_name, "avg_all_prompts")
 
 
 def experiment1(res):
@@ -174,7 +159,7 @@ def experiment2(res):
             sorted_indices = np.argsort(-sims)
 
             # Determine if positive is in top results
-            correct_pos = np.where(sorted_indices == 0)[0][0]   # First entry is the correct emb
+            correct_pos = np.where(sorted_indices == 0)[0][0]  # First entry is the correct emb
             p1 = 1 if correct_pos == 0 else 0  # Top-1 check
             p2 = 1 if correct_pos < 2 else 0  # Top-2 check
 
@@ -197,9 +182,9 @@ def plot_experiment1(means, stderrs, model_name, prompt_suffix):
                  fmt='-o', capsize=5, color='darkgreen')
     plt.xlabel("Layer Number")
     plt.ylabel("Cosine Similarity")
-    plt.title(f"{model_name} - Canonical vs Non-Canonical\n({prompt_suffix})")
+    plt.title(f"{model_name} - Baseline Canonical vs Non-Canonical\n({prompt_suffix})")
     plt.grid(alpha=0.3)
-    plot_dir = f"/nethome/pjajoria/Github/MolICL-Eval/results/non_canonical_with_prompting_plots/{model_name}"
+    plot_dir = f"/nethome/pjajoria/Github/MolICL-Eval/results/non_canonical_with_prompting_baseline/{model_name}"
     os.makedirs(plot_dir, exist_ok=True)
     plt.savefig(f"{plot_dir}/{model_name}_exp1_{prompt_suffix}.png")
     plt.close()
@@ -207,7 +192,8 @@ def plot_experiment1(means, stderrs, model_name, prompt_suffix):
 
 def plot_experiment2(p1_means, p1_stderrs, p2_means, p2_stderrs,
                      model_name, prompt_suffix):
-    p1_means, p1_stderrs, p2_means, p2_stderrs = np.array(p1_means), np.array(p1_stderrs), np.array(p2_means), np.array(p2_stderrs)
+    p1_means, p1_stderrs, p2_means, p2_stderrs = np.array(p1_means), np.array(p1_stderrs), np.array(p2_means), np.array(
+        p2_stderrs)
     plt.figure(figsize=(10, 6))
     layers = range(len(p1_means))
 
@@ -287,10 +273,10 @@ def extract_hidden_layers_avg_pooling(input_strings, tokenizer, model, prompts):
 
 
 def get_transformer_emb(hf_model: str, hf_tokenizer: str):
+    n_non_canonical_variants = 5
     prompts = ["This is a SMILES for a molecule: ", "SMILES: ", "BBBP Molecule: ",
                "The following is a molecule represented as a SMILES. \n"]
-    smiles_map = get_bbbp_non_canonical_smiles()
-
+    smiles_map = get_bbbp_non_canonical_smiles(n_variants=n_non_canonical_variants)
     # Load model directly
     tokenizer = AutoTokenizer.from_pretrained(hf_tokenizer)
     tokenizer.pad_token = tokenizer.eos_token  # Set padding token
@@ -298,17 +284,21 @@ def get_transformer_emb(hf_model: str, hf_tokenizer: str):
     model.eval()  # Set model to evaluation mode
 
     res = {}
-    for k, v in tqdm(smiles_map.items()):
-        canonical_embdeddings = extract_hidden_layers_avg_pooling([k], tokenizer, model,
-                                                                  prompts)  # (#prompts=5, batch, layers, dim)
-        non_canonical_embeddings = extract_hidden_layers_avg_pooling(v, tokenizer, model,
+    all_smiles = list(smiles_map.keys())
+    for _ in tqdm(range(1000)):
+        smile_i, smile_j = random.sample(all_smiles, 2)
+        smile_j = smiles_map[smile_j][
+            random.randint(0, n_non_canonical_variants - 1)]  # non canonical variant of smile_j
+        canonical_embeddings = extract_hidden_layers_avg_pooling([smile_i], tokenizer, model,
+                                                                 prompts)  # (#prompts=5, batch, layers, dim)
+        non_canonical_embeddings = extract_hidden_layers_avg_pooling([smile_j], tokenizer, model,
                                                                      prompts)  # (#prompts=5, batch, layers, dim)
-        res[k] = {"smiles": k,
-                  "non_canonical_smiles": v,
-                  "canonical_embeddings": canonical_embdeddings,
-                  "non_canonical_embeddings": non_canonical_embeddings,
-                  "prompts": prompts
-                  }
+        res[smile_i + "__" + smile_j] = {"smiles": smile_i,
+                                         "non_canonical_smiles": smile_j,
+                                         "canonical_embeddings": canonical_embeddings,
+                                         "non_canonical_embeddings": non_canonical_embeddings,
+                                         "prompts": prompts
+                                         }
     return res
 
 
@@ -326,7 +316,7 @@ def main():
     filename = hf_model_name.split("/")[-1]
 
     res = get_transformer_emb(hf_model_name, hf_model_name)
-    res_dir = "/data/users/pjajoria/pickle_dumps/MolICL-Eval/distance_non_canonical_wt_prompting"
+    res_dir = "/data/users/pjajoria/pickle_dumps/MolICL-Eval/distance_non_canonical_baseline"
     os.makedirs(res_dir, exist_ok=True)
     with open(f"{res_dir}/{filename}_pickle.dmp", "wb") as handle:
         pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -349,4 +339,5 @@ def plot(hf_model_name, res: Optional[dict]):
 
 
 if __name__ == "__main__":
+    print(f"Running on Device: {device}")
     main()
