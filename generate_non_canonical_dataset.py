@@ -33,3 +33,7 @@ def get_bbbp_non_canonical_smiles(n_variants=5):
     smiles = test_df['smiles']
     random_smiles = generate_random_smiles(smiles, n_variants=n_variants)  # Dict mapping each smile to non-canonical variants
     return random_smiles
+
+
+if __name__ == "__main__":
+    print(generate_random_smiles(["CC(=O)OC1=CC=CC=C1C(=O)O"], 5))

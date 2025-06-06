@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import os
 from huggingface_hub import hf_hub_download
-from rdkit import Chem
-from rdkit.Chem import rdFingerprintGenerator
+# from rdkit import Chem
+# from rdkit.Chem import rdFingerprintGenerator
 
 pd.set_option('display.max_colwidth', None)
 
@@ -47,16 +47,18 @@ def bbbp():
     return dfs['train'], dfs['test'], dfs['validation']
 
 
+def OMol25():
+    from fairchem.core.datasets import AseDBDataset
+
+    dataset_path = "/data/corpora/OMol25/train_4M"
+    dataset = AseDBDataset({"src": dataset_path})
+
+    # index the dataset to get a structure
+    atoms = dataset.get_atoms(0)
+    atomic_positions = atoms.positions
+    atomic_numbers = atoms.get_atomic_numbers()
+
+
 # Usage example
 if __name__ == '__main__':
-    train_df, test_df, val_df = bbbp()
-    print(f"Train samples: {len(train_df)}, Test samples: {len(test_df)}, Validation samples: {len(val_df)}")
-
-    # Configure pandas to display ALL data without truncation
-    pd.set_option('display.max_columns', None)  # Show all columns
-    pd.set_option('display.max_colwidth', None)  # Show full width of each column
-    pd.set_option('display.width', None)  # Auto-detect terminal width
-    pd.set_option('display.expand_frame_repr', False)  # Prevent line breaks
-
-    print("\nTrain DataFrame Head (Full Content):")
-    print(train_df.head(25))
+    OMol25()

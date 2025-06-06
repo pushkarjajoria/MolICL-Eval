@@ -2,24 +2,24 @@ import argparse
 import os
 import pickle
 import random
+import time
 from typing import Optional
 
 import torch
 from tqdm import tqdm
 
 from generate_non_canonical_dataset import get_bbbp_non_canonical_smiles
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics.pairwise import cosine_similarity
 
-# device = torch.device('cpu')
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 torch.cuda.empty_cache()
 
 
-def entrypoint(res, model_name):
+def entrypoint(res, model_name, mean=None, variance=None):
     # First collect all prompt-specific results
     all_exp1 = []
 
@@ -39,24 +39,34 @@ def entrypoint(res, model_name):
             }
 
         # Run experiments for this prompt
-        exp1_means, exp1_stderrs = experiment1(prompt_res)
+        exp1_means, exp1_stderrs = experiment1(prompt_res, mean, variance)
 
         # Store for averaging
         all_exp1.append(exp1_means)
 
-        # Plot per-prompt results
-        plot_experiment1(exp1_means, exp1_stderrs, model_name,
-                         f"prompt_{prompt_idx}")
+        # # Plot per-prompt results
+        # plot_experiment1(exp1_means, exp1_stderrs, model_name,
+        #                  f"prompt_{prompt_idx}")
 
     # Compute cross-prompt averages
     avg_exp1_means = np.mean(all_exp1, axis=0)
     avg_exp1_stderr = np.std(all_exp1, axis=0) / np.sqrt(len(prompts))
 
+    fig_dict = {"avg_exp1_means": avg_exp1_means, "avg_exp1_stderr": avg_exp1_stderr, "model_name": model_name, "prompt_suffix": "avg_all_prompts"}
+    normalized = mean is not None and variance is not None
+    norm_text = "" if not normalized else "_normalized"
+    plot_dir = f"/nethome/pjajoria/Github/MolICL-Eval/results/prompting_baseline_plots{norm_text}/{model_name}"
+    os.makedirs(plot_dir, exist_ok=True)
+    filename = f"{plot_dir}/{model_name}_exp1{norm_text}.pkl"
+    with open(filename, "wb") as f:
+        pickle.dump(fig_dict, f)
+    print(f"Saved {filename}")
+
     # Plot averaged results
-    plot_experiment1(avg_exp1_means, avg_exp1_stderr, model_name, "avg_all_prompts")
+    plot_experiment1(avg_exp1_means, avg_exp1_stderr, model_name, "avg_all_prompts", plot_dir)
 
 
-def experiment1(res):
+def experiment1(res, dataset_mean, dataset_variance):
     """
     Computes layer-wise cosine similarity between canonical SMILES embeddings and their
     corresponding non-canonical variants across all entries in the dictionary.
@@ -89,6 +99,10 @@ def experiment1(res):
             # Reshape for sklearn compatibility
             layer_canon = canonical[layer_idx].reshape(1, -1)  # [1, emb_dim]
             layer_noncanon = non_canonicals[:, layer_idx, :]  # [5, emb_dim]
+            if dataset_mean is not None and dataset_variance is not None:
+                # Normalize both vectors from the correct layer_idx
+                layer_canon = (layer_canon-dataset_mean[layer_idx])/(dataset_variance[layer_idx] + 1e-6)
+                layer_noncanon = (layer_noncanon-dataset_mean[layer_idx])/(dataset_variance[layer_idx] + 1e-6)
 
             # Calculate pairwise similarities
             sims = cosine_similarity(layer_canon, layer_noncanon).flatten()
@@ -176,7 +190,7 @@ def experiment2(res):
     return p1_means, p1_stderrs, p2_means, p2_stderrs
 
 
-def plot_experiment1(means, stderrs, model_name, prompt_suffix):
+def plot_experiment1(means, stderrs, model_name, prompt_suffix, plot_dir):
     plt.figure(figsize=(10, 6))
     plt.errorbar(range(len(means)), means, yerr=stderrs,
                  fmt='-o', capsize=5, color='darkgreen')
@@ -184,7 +198,6 @@ def plot_experiment1(means, stderrs, model_name, prompt_suffix):
     plt.ylabel("Cosine Similarity")
     plt.title(f"{model_name} - Baseline Canonical vs Non-Canonical\n({prompt_suffix})")
     plt.grid(alpha=0.3)
-    plot_dir = f"/nethome/pjajoria/Github/MolICL-Eval/results/non_canonical_with_prompting_baseline/{model_name}"
     os.makedirs(plot_dir, exist_ok=True)
     plt.savefig(f"{plot_dir}/{model_name}_exp1_{prompt_suffix}.png")
     plt.close()
@@ -278,9 +291,14 @@ def get_transformer_emb(hf_model: str, hf_tokenizer: str):
                "The following is a molecule represented as a SMILES. \n"]
     smiles_map = get_bbbp_non_canonical_smiles(n_variants=n_non_canonical_variants)
     # Load model directly
-    tokenizer = AutoTokenizer.from_pretrained(hf_tokenizer)
-    tokenizer.pad_token = tokenizer.eos_token  # Set padding token
-    model = AutoModelForCausalLM.from_pretrained(hf_model, output_hidden_states=True)
+    if "MoLFormer" in hf_model:
+        model = AutoModel.from_pretrained(hf_model, deterministic_eval=True,
+                                          trust_remote_code=True, output_hidden_states=True)
+        tokenizer = AutoTokenizer.from_pretrained(hf_model, trust_remote_code=True)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(hf_model, trust_remote_code=True)
+        tokenizer.pad_token = tokenizer.eos_token  # Set padding token
+        model = AutoModelForCausalLM.from_pretrained(hf_model, output_hidden_states=True, trust_remote_code=True)
     model.eval()  # Set model to evaluation mode
 
     res = {}
@@ -314,12 +332,18 @@ def main():
 
     hf_model_name = args.hf_model_name
     filename = hf_model_name.split("/")[-1]
-
-    res = get_transformer_emb(hf_model_name, hf_model_name)
     res_dir = "/data/users/pjajoria/pickle_dumps/MolICL-Eval/distance_non_canonical_baseline"
-    os.makedirs(res_dir, exist_ok=True)
-    with open(f"{res_dir}/{filename}_pickle.dmp", "wb") as handle:
-        pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    res_pickle_path = f"{res_dir}/{filename}_pickle.dmp"
+    if os.path.exists(res_pickle_path):
+        with open(res_pickle_path, "rb") as handle:
+            res = pickle.load(handle)
+    else:
+        print("Result file does not exist. Extracting embeddings...")
+        res = get_transformer_emb(hf_model_name, hf_model_name)
+        os.makedirs(res_dir, exist_ok=True)
+        with open(res_pickle_path, "wb") as handle:
+            pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            time.sleep(2)   # Fixes empty pickle file issue
     plot(hf_model_name, res)
 
 
@@ -335,7 +359,11 @@ def plot(hf_model_name, res: Optional[dict]):
             print("The result (res) was not found and also not provided to the function.")
             raise FileNotFoundError(f"{filename} was not found at location {res_dir}")
 
-    entrypoint(res, filename)
+    with open(f"/data/users/pjajoria/pickle_dumps/mean_std_embeddings/{filename}.pkl", "rb") as mean_handle:
+        obj = pickle.load(mean_handle)
+    mean, std = obj["mean"].numpy(), obj["std"].numpy()
+
+    entrypoint(res, filename, mean, std)
 
 
 if __name__ == "__main__":

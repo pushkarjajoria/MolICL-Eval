@@ -75,6 +75,31 @@ def analyze_file(filepath):
     # print("\n")
 
 
+def icl_accuracy(filepath):
+    filename = os.path.basename(filepath)
+    data_list = []
+    with open(filepath, 'r') as f:
+        for line in f:
+            data_list.append(json.loads(line))
+
+    responses = [item["resps"][0][0].strip() for item in data_list]
+    labels = [str(item["target"]).strip() for item in data_list]
+
+    total = len(responses)
+    correct = 0
+    for i in range(total):
+        resp = responses[i]
+        lbl = labels[i]
+        if len(resp) == 1 and resp.isdigit():
+            if resp == lbl:
+                correct += 1
+
+    accuracy = correct / total
+    print(f"{filename}: {accuracy:.4f}")
+
+    return responses, labels
+
+
 if __name__ == '__main__':
     # Root directory to scan
     root_dir = "/data/users/pjajoria/ICL_runs"
@@ -83,6 +108,6 @@ if __name__ == '__main__':
     for dirpath, _, filenames in os.walk(root_dir):
         for fname in filenames:
             # Match files starting with samples_bbbp_llama3 and ending in .jsonl
-            if fname.startswith("samples_bbbp_gemma2-27b") and fname.endswith(".jsonl"):
+            if fname.startswith("samples_bbbp_gemma2") and fname.endswith(".jsonl"):
                 full_path = os.path.join(dirpath, fname)
-                analyze_file(full_path)
+                icl_accuracy(full_path)
