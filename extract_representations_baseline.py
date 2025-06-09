@@ -58,19 +58,20 @@ def experiment1(res, dataset_mean=None, dataset_variance=None):
     # Step 1: Initialize storage for layer similarities
     first_key = next(iter(res))
     num_layers = res[first_key]["canonical_embeddings"].shape[1]
+    print(f"Number of Layers: {num_layers}")
     layer_accumulator = [[] for _ in range(num_layers)]
 
     # Step 2: Process each chemical entry in the dictionary
     for entry in res.values():  # Iterate through dictionary values
         # Extract embeddings for current compound
         canonical = entry["canonical_embeddings"].squeeze()  # [num_layers, emb_dim]
-        non_canonicals = entry["non_canonical_embeddings"]  # [5, num_layers, emb_dim]
+        non_canonicals = entry["non_canonical_embeddings"].squeeze()  # [num_layers, emb_dim]
 
         # Process each transformer layer
         for layer_idx in range(num_layers):
             # Reshape for sklearn compatibility
             layer_canon = canonical[layer_idx].reshape(1, -1)  # [1, emb_dim]
-            layer_noncanon = non_canonicals[:, layer_idx, :]  # [5, emb_dim]
+            layer_noncanon = non_canonicals[layer_idx, :]  # [1, emb_dim]
 
             if dataset_mean is not None and dataset_variance is not None:
                 # Normalize both vectors from the correct layer_idx
@@ -157,8 +158,8 @@ def get_transformer_emb(hf_model: str, hf_tokenizer: str):
         smile_i, smile_j = random.sample(all_smiles, 2)
         smile_j = smiles_map[smile_j][
             random.randint(0, n_non_canonical_variants - 1)]  # non canonical variant of smile_j
-        canonical_embeddings = extract_hidden_layers_avg_pooling([smile_i], tokenizer, model)  # (#prompts=5, batch, layers, dim)
-        non_canonical_embeddings = extract_hidden_layers_avg_pooling([smile_j], tokenizer, model)  # (#prompts=5, batch, layers, dim)
+        canonical_embeddings = extract_hidden_layers_avg_pooling([smile_i], tokenizer, model)  # (batch, layers, dim)
+        non_canonical_embeddings = extract_hidden_layers_avg_pooling([smile_j], tokenizer, model)  # (batch, layers, dim)
         res[smile_i + "__" + smile_j] = {"smiles": smile_i,
                                          "non_canonical_smiles": smile_j,
                                          "canonical_embeddings": canonical_embeddings,
@@ -182,9 +183,11 @@ if __name__ == '__main__':
     filename = hf_model_name.split("/")[-1]
     res_pickle_path = f"/data/users/pjajoria/pickle_dumps/MolICL-Eval/distance_non_canonical_baseline/{filename}_pickle.dmp"
     if os.path.exists(res_pickle_path):
+        print("Result file exists. Loading from pickle")
         with open(res_pickle_path, "rb") as handle:
             res = pickle.load(handle)
     else:
+        print("Result file does not exist. Creating the result file.")
         res = get_transformer_emb(hf_model_name, hf_model_name)
         with open(res_pickle_path, "wb") as handle:
             pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
