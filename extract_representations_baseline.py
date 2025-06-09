@@ -1,6 +1,8 @@
 import argparse
 import os
 import pickle
+import random
+
 import torch
 from tqdm import tqdm
 
@@ -19,7 +21,7 @@ torch.cuda.empty_cache()
 def entrypoint(res, model_name, mean=None, variance=None):
     normalized = mean is not None and variance is not None
     norm_text = "" if not normalized else "_normalized"
-    plot_dir = f"/nethome/pjajoria/Github/MolICL-Eval/results/non_canonical_plots{norm_text}/{model_name}"
+    plot_dir = f"/nethome/pjajoria/Github/MolICL-Eval/results/baseline_non_canonical_{norm_text}/{model_name}"
     os.makedirs(plot_dir, exist_ok=True)
 
     # First run experiment 1
@@ -29,7 +31,7 @@ def entrypoint(res, model_name, mean=None, variance=None):
     with open(filename, "wb") as f:
         pickle.dump(fig_dict, f)
     print(f"Saved {filename}")
-    plot_experiment1(exp1_means, exp1_stderrs, model_name, normalized)
+    plot_experiment1(exp1_means, exp1_stderrs, model_name, normalized, plot_dir)
 
     # Then run experiment 2
     # exp2_p1_means, exp2_p1_stderrs, exp2_p2_means, exp2_p2_stderrs = experiment2(res)
@@ -89,16 +91,15 @@ def experiment1(res, dataset_mean=None, dataset_variance=None):
     return means, stderrs
 
 
-def plot_experiment1(means, stderrs, model_name, normalized):
+def plot_experiment1(means, stderrs, model_name, normalized, plot_dir):
     norm_text = "" if not normalized else "_normalized"
     plt.figure(figsize=(10, 6))
     plt.errorbar(range(len(means)), means, yerr=stderrs,
                  fmt='-o', capsize=5, color='darkgreen')
     plt.xlabel("Layer Number", fontsize=12)
     plt.ylabel("Cosine Similarity", fontsize=12)
-    plt.title(f"[{model_name}] Canonical vs Non-Canonical Embedding Similarity {norm_text[1:]}", fontsize=14)
+    plt.title(f"[{model_name}] Baseline Canonical vs Non-Canonical Sim {norm_text[1:].upper()}", fontsize=14)
     plt.grid(alpha=0.3)
-    plot_dir = f"/nethome/pjajoria/Github/MolICL-Eval/results/non_canonical_plots{norm_text}/{model_name}"
     os.makedirs(plot_dir, exist_ok=True)
     plt.savefig(f"{plot_dir}/{model_name}_exp1{norm_text}.png")
     plt.close()
@@ -137,27 +138,32 @@ def extract_hidden_layers_avg_pooling(input_strings, tokenizer, model):
 
 
 def get_transformer_emb(hf_model: str, hf_tokenizer: str):
-    smiles_map = get_bbbp_non_canonical_smiles()
+    n_non_canonical_variants = 5
+    smiles_map = get_bbbp_non_canonical_smiles(n_variants=n_non_canonical_variants)
 
     if "MoLFormer" in hf_model:
         model = AutoModel.from_pretrained(hf_model, deterministic_eval=True,
                                           trust_remote_code=True, output_hidden_states=True)
-        tokenizer = AutoTokenizer.from_pretrained(hf_model, trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(hf_tokenizer, trust_remote_code=True)
     else:
-        tokenizer = AutoTokenizer.from_pretrained(hf_model, trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(hf_tokenizer, trust_remote_code=True)
         tokenizer.pad_token = tokenizer.eos_token  # Set padding token
         model = AutoModelForCausalLM.from_pretrained(hf_model, output_hidden_states=True, trust_remote_code=True)
     model.eval()  # Set model to evaluation mode
 
     res = {}
-    for k, v in tqdm(smiles_map.items()):
-        canonical_embdeddings = extract_hidden_layers_avg_pooling([k], tokenizer, model)
-        non_canonical_embeddings = extract_hidden_layers_avg_pooling(v, tokenizer, model)
-        res[k] = {"smiles": k,
-                  "non_canonical_smiles": v,
-                  "canonical_embeddings": canonical_embdeddings,
-                  "non_canonical_embeddings": non_canonical_embeddings
-                  }
+    all_smiles = list(smiles_map.keys())
+    for _ in tqdm(range(1000)):
+        smile_i, smile_j = random.sample(all_smiles, 2)
+        smile_j = smiles_map[smile_j][
+            random.randint(0, n_non_canonical_variants - 1)]  # non canonical variant of smile_j
+        canonical_embeddings = extract_hidden_layers_avg_pooling([smile_i], tokenizer, model)  # (#prompts=5, batch, layers, dim)
+        non_canonical_embeddings = extract_hidden_layers_avg_pooling([smile_j], tokenizer, model)  # (#prompts=5, batch, layers, dim)
+        res[smile_i + "__" + smile_j] = {"smiles": smile_i,
+                                         "non_canonical_smiles": smile_j,
+                                         "canonical_embeddings": canonical_embeddings,
+                                         "non_canonical_embeddings": non_canonical_embeddings
+                                         }
     return res
 
 
@@ -174,7 +180,7 @@ if __name__ == '__main__':
 
     # hf_model_name = "google/gemma-3-4b-it"
     filename = hf_model_name.split("/")[-1]
-    res_pickle_path = f"/data/users/pjajoria/pickle_dumps/MolICL-Eval/distance_non_canonical/{filename}_pickle.dmp"
+    res_pickle_path = f"/data/users/pjajoria/pickle_dumps/MolICL-Eval/distance_non_canonical_baseline/{filename}_pickle.dmp"
     if os.path.exists(res_pickle_path):
         with open(res_pickle_path, "rb") as handle:
             res = pickle.load(handle)
