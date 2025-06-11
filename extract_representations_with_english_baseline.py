@@ -332,7 +332,7 @@ def main():
 
     hf_model_name = args.hf_model_name
     filename = hf_model_name.split("/")[-1]
-    res_dir = "/data/users/pjajoria/pickle_dumps/MolICL-Eval/distance_non_canonical_baseline"
+    res_dir = "/data/users/pjajoria/pickle_dumps/MolICL-Eval/distance_non_canonical_baseline_prompting"
     res_pickle_path = f"{res_dir}/{filename}_pickle.dmp"
     if os.path.exists(res_pickle_path):
         with open(res_pickle_path, "rb") as handle:
@@ -347,22 +347,11 @@ def main():
     plot(hf_model_name, res)
 
 
-def plot(hf_model_name, res: Optional[dict]):
+def plot(hf_model_name, res):
     filename = hf_model_name.split("/")[-1]
-    res_dir = "/data/users/pjajoria/pickle_dumps/MolICL-Eval/distance_non_canonical_wt_prompting"
-
-    if res is None:
-        try:
-            with open(f"{res_dir}/{filename}_pickle.dmp", "rb") as handle:
-                res = pickle.load(handle)
-        except FileNotFoundError:
-            print("The result (res) was not found and also not provided to the function.")
-            raise FileNotFoundError(f"{filename} was not found at location {res_dir}")
-
     with open(f"/data/users/pjajoria/pickle_dumps/mean_std_embeddings/{filename}.pkl", "rb") as mean_handle:
         obj = pickle.load(mean_handle)
     mean, std = obj["mean"].numpy(), obj["std"].numpy()
-
     entrypoint(res, filename, mean, std)
 
 
