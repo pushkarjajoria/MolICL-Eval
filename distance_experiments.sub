@@ -21,23 +21,35 @@ LLAMA          = meta-llama/Llama-3.1-8B-Instruct
 GEMMA1B        = google/gemma-3-1b-it
 GEMMA4B        = google/gemma-3-4b-it
 MoLFormer      = ibm-research/MoLFormer-XL-both-10pct
+ChemBERTa      = seyonec/ChemBERTa-zinc-base-v1
+ChemBERT       = jonghyunlee/ChemBERT_ChEMBL_pretrained
 
 # Llama
-requirements        = (Machine == "cl17lx.lsv.uni-saarland.de") || (Machine == "cl18lx.lsv.uni-saarland.de")
-arguments           = $(LLAMA)
-queue 1
+#requirements        = (Machine == "cl17lx.lsv.uni-saarland.de") || (Machine == "cl18lx.lsv.uni-saarland.de")
+#arguments           = $(LLAMA)
+#queue 1
+#
+## GEMMA4B
+#requirements        = (Machine == "cl17lx.lsv.uni-saarland.de") || (Machine == "cl18lx.lsv.uni-saarland.de")
+#arguments           = $(GEMMA4B)
+#queue 1
+#
+## GEMMA1B
+#requirements        = (Machine == "cl17lx.lsv.uni-saarland.de") || (Machine == "cl18lx.lsv.uni-saarland.de")
+#arguments           = $(GEMMA1B)
+#queue 1
+#
+## MoLFormer
+#requirements        = (Machine == "cl17lx.lsv.uni-saarland.de") || (Machine == "cl18lx.lsv.uni-saarland.de")
+#arguments           = $(MoLFormer)
+#queue 1
 
-# GEMMA4B
-requirements        = (Machine == "cl17lx.lsv.uni-saarland.de") || (Machine == "cl18lx.lsv.uni-saarland.de")
-arguments           = $(GEMMA4B)
-queue 1
+# ChemBERTa
+#requirements        = (Machine == "cl17lx.lsv.uni-saarland.de") || (Machine == "cl18lx.lsv.uni-saarland.de")
+#arguments           = $(ChemBERTa)
+#queue 1
 
-# GEMMA1B
+# ChemBERT
 requirements        = (Machine == "cl17lx.lsv.uni-saarland.de") || (Machine == "cl18lx.lsv.uni-saarland.de")
-arguments           = $(GEMMA1B)
-queue 1
-
-# MoLFormer
-requirements        = (Machine == "cl17lx.lsv.uni-saarland.de") || (Machine == "cl18lx.lsv.uni-saarland.de")
-arguments           = $(MoLFormer)
+arguments           = $(ChemBERT)
 queue 1

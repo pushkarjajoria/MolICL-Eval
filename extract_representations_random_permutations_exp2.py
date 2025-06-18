@@ -5,8 +5,8 @@ import random
 import time
 import torch
 from tqdm import tqdm
-from generate_non_canonical_dataset import get_random_smiles_permutations
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
+from generate_non_canonical_dataset import get_random_smiles_permutations, get_bbbp_non_canonical_smiles
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, AutoModelForMaskedLM
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics.pairwise import cosine_similarity
@@ -17,82 +17,17 @@ torch.cuda.empty_cache()
 
 
 def entrypoint(res, model_name, plot_dir, mean=None, std=None):
-    normalized = False if mean is None else True
-    norm_text = "_normalized" if normalized else ""
-    # First run experiment 1
-    exp1_means, exp1_stderrs = experiment1(res, mean, std)
-    fig_dict = {"exp1_mean": exp1_means, "exp1_stderr": exp1_stderrs, "model_name": model_name,
-                "normalized": normalized}
-    filename = f"{plot_dir}/{model_name}_exp1{norm_text}.pkl"
-    with open(filename, "wb") as f:
-        pickle.dump(fig_dict, f)
-    print(f"Saved {filename}")
-    plot_experiment1(exp1_means, exp1_stderrs, model_name, normalized, plot_dir)
-
     # Then run experiment 2
-    # exp2_p1_means, exp2_p1_stderrs, exp2_p2_means, exp2_p2_stderrs = experiment2(res)
-    # fig_dict_exp2 = {"exp2_p1_means": exp2_p1_means, "exp2_p1_stderrs": exp2_p1_stderrs,
-    #             "exp2_p2_means": exp2_p2_means, "exp2_p2_stderrs": exp2_p2_stderrs,
-    #             "model_name": model_name}
-    # filename = f"{plot_dir}/{model_name}_exp2.pkl"
-    # with open(filename, "wb") as f:
-    #     pickle.dump(fig_dict_exp2, f)
-    # print(f"Saved {filename}")
-    #
-    # plot_experiment2(exp2_p1_means, exp2_p1_stderrs, exp2_p2_means, exp2_p2_stderrs, model_name, plot_dir)
+    exp2_p1_means, exp2_p1_stderrs, exp2_p2_means, exp2_p2_stderrs = experiment2(res)
+    fig_dict_exp2 = {"exp2_p1_means": exp2_p1_means, "exp2_p1_stderrs": exp2_p1_stderrs,
+                "exp2_p2_means": exp2_p2_means, "exp2_p2_stderrs": exp2_p2_stderrs,
+                "model_name": model_name}
+    filename = f"{plot_dir}/{model_name}_exp2.pkl"
+    with open(filename, "wb") as f:
+        pickle.dump(fig_dict_exp2, f)
+    print(f"Saved {filename}")
 
-
-def experiment1(res, dataset_mean=None, dataset_variance=None):
-    """
-    Computes layer-wise cosine similarity between canonical SMILES embeddings and their
-    corresponding non-canonical variants across all entries in the dictionary.
-
-    Process:
-    1. For each entry in the dictionary values:
-        a. Extract canonical embeddings (shape: [num_layers, emb_dim])
-        b. Extract non-canonical embeddings (shape: [5, num_layers, emb_dim])
-    2. For each transformer layer:
-        a. Calculate cosine similarity between canonical and each of the 5 non-canonical embeddings
-        b. Aggregate similarities across all entries
-    3. Compute layer-wise statistics (mean ± SEM) across all comparisons
-
-    Returns:
-        tuple: (means: List[float], standard_errors: List[float]) per layer
-    """
-    # Step 1: Initialize storage for layer similarities
-    first_key = next(iter(res))
-    num_layers = res[first_key]["canonical_embeddings"].shape[1]
-    layer_accumulator = [[] for _ in range(num_layers)]
-
-    # Step 2: Process each chemical entry in the dictionary
-    for entry in res.values():  # Iterate through dictionary values
-        # Extract embeddings for current compound
-        canonical = entry["canonical_embeddings"].squeeze()  # [num_layers, emb_dim]
-        non_canonicals = entry["non_canonical_embeddings"]  # [5, num_layers, emb_dim]
-
-        # Process each transformer layer
-        for layer_idx in range(num_layers):
-            # Reshape for sklearn compatibility
-            layer_canon = canonical[layer_idx].reshape(1, -1)  # [1, emb_dim]
-            layer_noncanon = non_canonicals[:, layer_idx, :]  # [5, emb_dim]
-
-            if dataset_mean is not None and dataset_variance is not None:
-                # Normalize both vectors from the correct layer_idx
-                layer_canon = (layer_canon-dataset_mean[layer_idx])/(dataset_variance[layer_idx] + 1e-6)
-                layer_noncanon = (layer_noncanon-dataset_mean[layer_idx])/(dataset_variance[layer_idx] + 1e-6)
-            # Else do nothing.
-
-            # Calculate pairwise similarities
-            sims = cosine_similarity(layer_canon, layer_noncanon).flatten()
-
-            # Store results for statistical analysis
-            layer_accumulator[layer_idx].extend(sims)
-
-    # Compute statistics across all samples
-    means = [np.mean(sims) for sims in layer_accumulator]
-    stderrs = [np.std(sims, ddof=1) / np.sqrt(len(sims)) for sims in layer_accumulator]
-
-    return means, stderrs
+    plot_experiment2(exp2_p1_means, exp2_p1_stderrs, exp2_p2_means, exp2_p2_stderrs, model_name, plot_dir)
 
 
 def experiment2(res):
@@ -125,18 +60,13 @@ def experiment2(res):
         query_emb = query_entry["canonical_embeddings"].squeeze()
 
         # Randomly select one non-canonical as positive
-        correct_idx = np.random.randint(0, 5)
-        correct_emb = query_entry["non_canonical_embeddings"][correct_idx]
+        correct_emb = query_entry["non_canonical_embeddings"][0]
 
         # Sample negative candidates from other compounds
-        other_keys = [k for k in all_keys if k != query_key]
-        sampled_keys = np.random.choice(other_keys, size=4, replace=False)
+        permuted_embeddings = query_entry["permuted_embeddings"]
 
-        # Build candidate pool (1 positive + 4 negatives)
-        candidate_embs = [correct_emb] + [
-            res[k]["non_canonical_embeddings"][np.random.randint(0, 5)]
-            for k in sampled_keys
-        ]
+        # Build candidate pool (1 positive + 5 negatives)
+        candidate_embs = [correct_emb] + permuted_embeddings
 
         # Process each layer
         for layer_idx in range(num_layers):
@@ -166,20 +96,6 @@ def experiment2(res):
     p2_stderrs = [np.std(scores, ddof=1) / np.sqrt(len(scores)) for scores in p2_scores]
 
     return p1_means, p1_stderrs, p2_means, p2_stderrs
-
-
-def plot_experiment1(means, stderrs, model_name, normalized, plot_dir):
-    norm_text = "" if not normalized else "_normalized"
-    plt.figure(figsize=(10, 6))
-    plt.errorbar(range(len(means)), means, yerr=stderrs,
-                 fmt='-o', capsize=5, color='darkgreen')
-    plt.xlabel("Layer Number", fontsize=12)
-    plt.ylabel("Cosine Similarity", fontsize=12)
-    plt.title(f"[{model_name}] Baseline Canonical vs Non-Canonical Sim {norm_text[1:].upper()}", fontsize=14)
-    plt.grid(alpha=0.3)
-    os.makedirs(plot_dir, exist_ok=True)
-    plt.savefig(f"{plot_dir}/{model_name}_exp1{norm_text}.png")
-    plt.close()
 
 
 def plot_experiment2(p1_means, p1_stderrs, p2_means, p2_stderrs, model_name, plot_dir):
@@ -253,12 +169,16 @@ def extract_hidden_layers_avg_pooling(input_strings, tokenizer, model):
 
 def get_transformer_emb(hf_model: str, hf_tokenizer: str):
     n_random_variants = 5
-    smiles_map = get_random_smiles_permutations(n_variants=n_random_variants)
+    permuted_smiles_map = get_random_smiles_permutations(n_variants=n_random_variants)
+    non_canonical_smiles_map = get_bbbp_non_canonical_smiles(n_variants=1)
 
     if "MoLFormer" in hf_model:
         model = AutoModel.from_pretrained(hf_model, deterministic_eval=True,
                                           trust_remote_code=True, output_hidden_states=True)
         tokenizer = AutoTokenizer.from_pretrained(hf_tokenizer, trust_remote_code=True)
+    elif "ChemBERTa" in hf_model:
+        tokenizer = AutoTokenizer.from_pretrained(hf_tokenizer, trust_remote_code=True)
+        model = AutoModelForMaskedLM.from_pretrained(hf_model, output_hidden_states=True, trust_remote_code=True)
     else:
         tokenizer = AutoTokenizer.from_pretrained(hf_tokenizer, trust_remote_code=True)
         tokenizer.pad_token = tokenizer.eos_token  # Set padding token
@@ -266,32 +186,35 @@ def get_transformer_emb(hf_model: str, hf_tokenizer: str):
     model.eval()  # Set model to evaluation mode
 
     res = {}
-    for k, v in tqdm(smiles_map.items()):
+    for k, v in tqdm(permuted_smiles_map.items()):
         canonical_embdeddings = extract_hidden_layers_avg_pooling([k], tokenizer, model)
-        non_canonical_embeddings = extract_hidden_layers_avg_pooling(v, tokenizer, model)
+        non_canonical_embeddings = extract_hidden_layers_avg_pooling(non_canonical_smiles_map[k], tokenizer, model)
+        permuted_embeddings = extract_hidden_layers_avg_pooling(v, tokenizer, model)
         res[k] = {"smiles": k,
-                  "non_canonical_smiles": v,
+                  "permuted_smiles": v,
+                  "non_canonical_smiles": non_canonical_smiles_map[k],
                   "canonical_embeddings": canonical_embdeddings,
-                  "non_canonical_embeddings": non_canonical_embeddings
+                  "non_canonical_embeddings": non_canonical_embeddings,
+                  "permuted_embeddings": permuted_embeddings
                   }
     return res
 
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser(description="Extract transformer embeddings for a HF model.")
-    # parser.add_argument(
-    #     "--hf_model_name",
-    #     type=str,
-    #     required=True,
-    #     help="HuggingFace model name (e.g. meta-llama/Meta-Llama-3-8B)"
-    # )
-    # args = parser.parse_args()
-    # hf_model_name = args.hf_model_name
-    hf_model_name = "google/gemma-3-1b-it"
+    parser = argparse.ArgumentParser(description="Extract transformer embeddings for a HF model.")
+    parser.add_argument(
+        "--hf_model_name",
+        type=str,
+        required=True,
+        help="HuggingFace model name (e.g. meta-llama/Meta-Llama-3-8B)"
+    )
+    args = parser.parse_args()
+    hf_model_name = args.hf_model_name
+    # hf_model_name = "google/gemma-3-1b-it"
     filename = hf_model_name.split("/")[-1]
 
     # # Directories # #
-    res_pickle_path = f"/data/users/pjajoria/pickle_dumps/MolICL-Eval/distance_random_permutations/{filename}_pickle.dmp"
+    res_pickle_path = f"/data/users/pjajoria/pickle_dumps/MolICL-Eval/distance_random_permutations/{filename}_exp2_pickle.dmp"
     res_dir = "/".join(res_pickle_path.split('/')[:-1]) + "/"
     normalizations_file = f"/data/users/pjajoria/pickle_dumps/mean_std_embeddings/{filename}.pkl"
     plot_dir = f"/nethome/pjajoria/Github/MolICL-Eval/results/random_permutations_normalized/{filename}"
@@ -309,8 +232,11 @@ if __name__ == '__main__':
         with open(res_pickle_path, "wb") as handle:
             pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
             time.sleep(2)   # Seconds. Hack for sometimes getting empty pickle files
-
-    with open(normalizations_file, "rb") as mean_handle:
-        obj = pickle.load(mean_handle)
-    mean, std = obj["mean"].numpy(), obj["std"].numpy()
+    try:
+        with open(normalizations_file, "rb") as mean_handle:
+            obj = pickle.load(mean_handle)
+        mean, std = obj["mean"].numpy(), obj["std"].numpy()
+    except FileNotFoundError:
+        print(f"[WARNING] No normalization file found for model: {hf_model_name}")
+        mean, std = None, None
     entrypoint(res, filename, plot_dir, mean=mean, std=std)

@@ -129,9 +129,16 @@ def get_bbbp_non_canonical_smiles(n_variants=5):
     return random_smiles
 
 
-def get_random_smiles_permutations(n_variants=5):
+def get_random_smiles_permutations(n_variants=5, split_type="test"):
     train_df, test_df, val_df = bbbp()
-    smiles = test_df['smiles']
+    if split_type == "train":
+        smiles = train_df['smiles']
+    elif split_type == "test":
+        smiles = test_df['smiles']
+    elif split_type == "val":
+        smiles = val_df['smiles']
+    else:
+        raise ValueError(f"split_type {split_type} must be either 'train', 'val' or 'test'")
     random_smiles = generate_random_permutations_with_valid_brackets(smiles, n_variants=n_variants)
     return random_smiles
 

@@ -1,0 +1,38 @@
+# HTCondor submit description file: all_experiments.submit
+
+universe            = docker
+docker_image        = pushkarjajoria/lsv_17lx_cuda_base:latest
+docker_pull_policy  = always
+initialdir          = /nethome/pjajoria
+executable          = /nethome/pjajoria/Github/MolICL-Eval/run_distance.sh
+transfer_executable = False
+
+output              = /nethome/pjajoria/Github/MolICL-Eval/logfiles/all.$(Cluster).$(Process).out
+error               = /nethome/pjajoria/Github/MolICL-Eval/logfiles/all.$(Cluster).$(Process).err
+log                 = /nethome/pjajoria/Github/MolICL-Eval/logfiles/all.$(Cluster).log
+
+request_CPUs        = 1
+request_memory      = 100G
+request_GPUs        = 1
+
+# Model names (used in the queue statement below)
+LLAMA          = meta-llama/Llama-3.1-8B-Instruct
+GEMMA1B        = google/gemma-3-1b-it
+GEMMA4B        = google/gemma-3-4b-it
+MoLFormer      = ibm-research/MoLFormer-XL-both-10pct
+#Mol_Llama     = DongkiKim/Mol-Llama-3.1-8B-Instruct  # uncomment if needed
+
+# Only need to set requirements once
+requirements = (Machine == "cl17lx.lsv.uni-saarland.de") || \
+               (Machine == "cl18lx.lsv.uni-saarland.de")
+
+# Use MODEL to inject the per-job argument
+arguments = $(MODEL)
+
+# Submit one job per MODEL value
+queue MODEL from (
+    $(LLAMA)
+    $(GEMMA4B)
+    $(GEMMA1B)
+    $(MoLFormer)
+)
